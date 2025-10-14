@@ -66,6 +66,13 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Claude Code (native CLI)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          claude --version || true
+          claude doctor || true
+
       - name: Install Claude Code SDK
         run: |
           npm init -y
