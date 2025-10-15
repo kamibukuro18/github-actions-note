@@ -241,10 +241,13 @@ jobs:
       MESSAGE: ${{ github.event.inputs.message }}
       CTA: ${{ github.event.inputs.cta }}
       INPUT_TAGS: ${{ github.event.inputs.tags }}
+      WRITE_MODEL: claude-sonnet-4-5-20250929   # ← ここに追加（4.5を使うなら）
     outputs:
       title: ${{ steps.collect.outputs.title }}
       draft_json_b64: ${{ steps.collect.outputs.draft_json_b64 }}
     steps:
+      - name: Cooldown for Anthropic ITPM        # ← ジョブの最初に入れる
+        run: sleep 95
       - name: Checkout
         uses: actions/checkout@v4
 
