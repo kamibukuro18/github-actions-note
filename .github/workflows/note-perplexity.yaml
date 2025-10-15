@@ -88,7 +88,8 @@ jobs:
 
           // Perplexity APIクライアント初期化
           const perplexity = new Perplexity({
-            apiKey: process.env.PPLX_API_KEY
+            apiKey: process.env.PPLX_API_KEY || '',
+            baseURL: 'https://api.perplexity.ai',
           });
 
           async function main() {
