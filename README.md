@@ -3,6 +3,11 @@
 [こちらのgithubのforkです](https://github.com/Go-555/github-actions-note)
 実行のためのAPIロジックを調整、トークン数を調整などしたものです。
 
+[参考したnoteはこちら](https://note.com/joyous_hawk969/n/n7e325e86a3db)
+
+
+
+
 このリポジトリの `.github/workflows/note.yaml` は、以下のパイプラインをGitHub Actionsで実行します。
 
 1) **リサーチAgent**: Claude Code SDK の WebSearch / WebFetch によるリサーチレポート作成
