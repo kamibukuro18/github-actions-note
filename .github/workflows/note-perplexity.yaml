@@ -273,8 +273,32 @@ jobs:
           import fs from 'fs';
           const theme=process.env.THEME||''; const target=process.env.TARGET||''; const message=process.env.MESSAGE||''; const cta=process.env.CTA||'';
           const inputTags=(process.env.INPUT_TAGS||'').split(',').map(s=>s.trim()).filter(Boolean);
-          const researchReport=fs.readFileSync('.note-artifacts/research.md','utf8');
-          const modelName='claude-sonnet-4-20250514';
+          const modelName=process.env.WRITE_MODEL || 'claude-sonnet-4-20250514';
+          const fullResearch=fs.readFileSync('.note-artifacts/research.md','utf8');
+
+          // --- 入力圧縮ユーティリティ（TPM超過対策） ---
+          function hardTruncateByChars(s, maxChars){
+            if(!s) return '';
+            if(s.length<=maxChars) return s;
+            const cut=s.slice(0,maxChars);
+            const lastBreak=Math.max(cut.lastIndexOf('\n\n'), cut.lastIndexOf('\n## '), cut.lastIndexOf('\n# '));
+            return (lastBreak>1000? cut.slice(0,lastBreak): cut) + '\n\n(…truncated…)\n';
+          }
+          // セクション単位でも軽く間引く
+          function compressMarkdown(md, sectionMaxChars=2400, totalMaxChars=60000){
+            const lines=String(md||'').split(/\r?\n/);
+            const blocks=[]; let cur=[];
+            const push=()=>{ if(cur.length){ blocks.push(cur.join('\n')); cur=[]; } };
+            for(const line of lines){ if(/^#{1,6}\s/.test(line)) push(); cur.push(line); } push();
+            const trimmed = blocks.map(b=>{
+              let x=b.replace(/^>\s.*$/gm,''); // 引用を削る
+              return hardTruncateByChars(x, sectionMaxChars);
+            }).join('\n\n');
+            return hardTruncateByChars(trimmed, totalMaxChars);
+          }
+          // 初期は ≒15k tokens 目安（4文字/トークン換算）
+          let inputBudgetChars = 60000;
+          let researchReport = compressMarkdown(fullResearch, 2400, inputBudgetChars);
           function extractJsonFlexible(raw){const t=(raw||'').trim().replace(/\u200B/g,'');try{return JSON.parse(t);}catch{}const m=t.match(/```[a-zA-Z]*\s*([\s\S]*?)\s*```/);if(m&&m[1]){try{return JSON.parse(m[1].trim());}catch{}}const f=t.indexOf('{'),l=t.lastIndexOf('}');if(f!==-1&&l!==-1&&l>f){const c=t.slice(f,l+1);try{return JSON.parse(c);}catch{}}return null;}
           async function repairJson(raw){const sys='入力から {"title":string,"draftBody":string,"tags":string[]} のJSONのみ返答。';const {text}=await generateText({model:anthropic(modelName),system:sys,prompt:String(raw),temperature:0,maxTokens:8000});return extractJsonFlexible(text||'');}
           function sanitizeTitle(t){
@@ -294,8 +318,38 @@ jobs:
             return sanitizeTitle(firstReal);
           }
           const sysWrite='note.com向け長文記事の生成。JSON {title,draftBody,tags[]} で返答。draftBodyは6000〜9000文字を目安に十分な分量で、章ごとに小見出しと箇条書きを適切に含めること。';
-          const prompt=[`{テーマ}: ${theme}`,`{ペルソナ}: ${target}`,`{リサーチ内容}: ${researchReport}`,`{伝えたいこと}: ${message}`,`{読後のアクション}: ${cta}`].join('\n');
-          const {text}=await generateText({model:anthropic(modelName),system:sysWrite,prompt,temperature:0.7,maxTokens:10000});
+          const makePrompt=(research)=>[
+           `{テーマ}: ${theme}`,
+            `{ペルソナ}: ${target}`,
+            `{リサーチ内容}:`,
+            research,
+            `{伝えたいこと}: ${message}`,
+            `{読後のアクション}: ${cta}`
+          ].join('\n');
+
+          async function callOnce(research, outMax=8000){
+            return generateText({
+              model: anthropic(modelName),
+              system: sysWrite,
+              prompt: makePrompt(research),
+              temperature: 0.7,
+              maxTokens: outMax
+            });
+          }
+
+          // 429 対策: 失敗したら Retry-After 待機 + さらに半分に圧縮して再実行
+          let text;
+          try{
+            ({text} = await callOnce(researchReport, 8000));
+          }catch(e){
+            const is429 = (e?.statusCode===429) || /rate limit/i.test(String(e?.message||'')); 
+            if(!is429) throw e;
+            const ra = Number(e?.responseHeaders?.['retry-after']||0);
+            if(ra && Number.isFinite(ra) && ra>0){ await new Promise(r=>setTimeout(r, Math.min(ra,90)*1000)); }
+            inputBudgetChars = Math.max(20000, Math.floor(inputBudgetChars/2)); // 60k→30k→…
+            researchReport = compressMarkdown(fullResearch, 1800, inputBudgetChars);
+            ({text} = await callOnce(researchReport, 7000));
+          }
           let obj=extractJsonFlexible(text||'')||await repairJson(text||'');
           let title, draftBody, tags; if(obj){title=sanitizeTitle(obj.title); draftBody=String(obj.draftBody||'').trim(); tags=Array.isArray(obj.tags)?obj.tags.map(String):[]}
           if(!title||!draftBody){ title=deriveTitleFromText(text||''); const lines=(text||'').split(/\r?\n/); draftBody=lines.slice(1).join('\n').trim()||(text||''); tags=[]}
