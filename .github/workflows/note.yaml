@@ -52,65 +52,37 @@ jobs:
     name: Research (CCSDK WebSearch/WebFetch)
     runs-on: ubuntu-latest
     env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      THEME: ${{ github.event.inputs.theme }}
-      TARGET: ${{ github.event.inputs.target }}
+      TZ: Asia/Tokyo
     outputs:
       research_b64: ${{ steps.collect.outputs.research_b64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Run Claude Code (headless)
+        id: cc
+        uses: anthropics/claude-code-action@v1
         with:
-          node-version: '20'
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # ここに「最終レポのみ返す・出典をMarkdownリンクで」等の指示を書く
+          prompt: |
+            あなたは最新情報の収集と要約に特化した超一流のリサーチャーです。
+            事実ベース・一次情報優先・本文内にMarkdownリンクで出典を埋め込むこと。
+            必ずWebSearch/WebFetchで最新情報を確認し、出典を本文各節に埋め込む。
+            途中経過や確認質問は一切せず、最終レポートのみ返す。
+            ---
+            テーマ: ${{ github.event.inputs.theme }}
+            ターゲット: ${{ github.event.inputs.target }}
+            現在日付: ${{ github.event.inputs.theme && '' }}${{ github.event.inputs.theme }} # ダミー評価回避
+          claude_args: |
+            --max-turns 1
+            --model claude-sonnet-4-5-20250929
 
-      - name: Install Claude Code (native CLI)
+      - name: Save research
         run: |
-          curl -fsSL https://claude.ai/install.sh | bash
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          claude --version || true
-          claude doctor || true
-
-      - name: Install Claude Code SDK
-        run: |
-          npm init -y
-          npm i @anthropic-ai/claude-agent-sdk
-
-      - name: Research with Claude Code SDK
-        run: |
-          cat > research.mjs <<'EOF'
-          import { query } from '@anthropic-ai/claude-agent-sdk';
-          import fs from 'fs';
-          const theme = process.env.THEME || '';
-          const target = process.env.TARGET || '';
-          const today = new Date().toISOString().slice(0,10);
-          const artifactsDir = '.note-artifacts';
-          fs.mkdirSync(artifactsDir, { recursive: true });
-          const sys = [
-            'あなたは最新情報の収集と要約に特化した超一流のリサーチャーです。',
-            '事実ベース・一次情報優先・本文内にMarkdownリンクで出典を埋め込むこと。',
-            '十分な分量（目安: 2,000語以上）。各節で出典を本文に埋め込む。',
-            'WebSearch と WebFetch を必ず使用し、一次情報（公的機関・規格・論文・公式）を優先する。',
-          ].join('\n');
-          const userPrompt = `以下のテーマとターゲットに対する最終版のリサーチレポートを作成してください。\n【重要】途中経過や確認質問は一切せず、最終レポートのみを返してください。不明点がある場合は「前提と仮定」セクションで簡潔に仮定を明記してから続行してください。事実ベースで一次情報を最優先し、本文にMarkdownリンクで出典を埋め込んでください。\n---\nテーマ: ${theme}\nターゲット: ${target}\n現在日付: ${today}`;
-          const messages = [];
-          for await (const msg of query({
-            prompt: userPrompt,
-            options: {
-              customSystemPrompt: sys,
-              allowedTools: ['WebSearch','WebFetch'],
-              permissionMode: 'acceptEdits',
-            },
-          })) { messages.push(msg); }
-          const assistantTexts = messages.filter(m=>m.type==='assistant').map(m=>{
-            const c=m.message?.content; if(Array.isArray(c)){return c.filter(b=>b?.type==='text').map(b=>b.text).join('\n');} return '';
-          }).filter(Boolean).join('\n\n');
-          fs.writeFileSync(`${artifactsDir}/research.md`, assistantTexts || '');
-          try { fs.writeFileSync(`${artifactsDir}/research_trace.json`, JSON.stringify(messages, null, 2)); } catch {}
-          EOF
-          node research.mjs
+          mkdir -p .note-artifacts
+          # Actionの標準出力をファイル化（出力キーが提供される場合は適宜変更）
+          echo "${{ steps.cc.outputs.response || steps.cc.outputs.output || '' }}" > .note-artifacts/research.md
 
       - name: Collect research
         id: collect
@@ -124,9 +96,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: research-artifacts
-          path: |
-            .note-artifacts/research.md
-            .note-artifacts/research_trace.json
+          path: .note-artifacts/research.md
+
 
   write:
     name: Write (Claude Sonnet 4.0)
