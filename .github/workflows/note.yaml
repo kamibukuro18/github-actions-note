@@ -42,6 +42,7 @@ on:
           - 'false'
 
 permissions:
+  id-token: write
   contents: read
 
 env:
@@ -64,6 +65,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }} 
           # ここに「最終レポのみ返す・出典をMarkdownリンクで」等の指示を書く
           prompt: |
             あなたは最新情報の収集と要約に特化した超一流のリサーチャーです。
