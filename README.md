@@ -1,4 +1,7 @@
-# Note Workflow – GitHub Actions
+# Note Workflow 20251015 custom – GitHub Actions
+
+[こちらのgithubのforkです](https://github.com/Go-555/github-actions-note)
+実行のためのAPIロジックを調整、トークン数を調整などしたものです。
 
 このリポジトリの `.github/workflows/note.yaml` は、以下のパイプラインをGitHub Actionsで実行します。
 
@@ -16,12 +19,13 @@
 - `ANTHROPIC_API_KEY`（必須）- Claude APIキー
 - `TAVILY_API_KEY`（必須）- Tavily検索APIキー
 - `NOTE_STORAGE_STATE_JSON`（必須）- note.comのログイン状態（後述の手順で取得）
+- `PPLX_API_KEY` (必須) - perplexityのAPIキー
 
 ---
 
 ## 実行方法
 
-GitHub Actions > Note Workflow を手動実行し、以下の入力を与えます：
+GitHub Actions > Note Workflow or Note Workflow(Perplexity) を手動実行し、以下の入力を与えます：
 
 - **theme**: 記事テーマ（必須）
 - **target**: 想定読者（必須）
@@ -158,6 +162,7 @@ node login-note.mjs
 ---
 
 ## 参考
+- [こちらのgithubのforkです](https://github.com/Go-555/github-actions-note)
 
 - [Claude Code SDK](https://github.com/anthropics/anthropic-claude-code)
 - [AI SDK (Anthropic)](https://sdk.vercel.ai/docs)
